@@ -30,11 +30,11 @@ from loss import *
 from torch import nn
 import torch.nn.init as nninit
 
-# random seed for reciprocity
-manualSeed = 999
-print("Random Seed: ", manualSeed)
-random.seed(manualSeed)
-torch.manual_seed(manualSeed)
+# # random seed for reciprocity
+# manualSeed = 999
+# print("Random Seed: ", manualSeed)
+# random.seed(manualSeed)
+# torch.manual_seed(manualSeed)
 
 
 ########################################## Hyper Parameters ###################################
@@ -64,74 +64,76 @@ torch.manual_seed(manualSeed)
 #33 new code old encoder term 2 coef
 #34 new code old encoder no term 2
 
-#root directory
-dataroot = "./data"
-modelroot = "./model900"
-imgroot = "./image900"
-saveModelRoot = "./model900"
+# #root directory
+# dataroot = "./data"
+# modelroot = "./model900"
+# imgroot = "./image900"
+# saveModelRoot = "./model900"
 
 
-#num of workers
-workers = 4
-gpu = 0
+# #num of workers
+# workers = 4
+# gpu = 0
 
-#batch size
-batch_size = 64
+# #batch size
+# batch_size = 64
 
-#spatial size of training images
-image_size = 32
+# #spatial size of training images
+# image_size = 32
 
-#gradient penalty lambda
-LAMBDA = 10
+# #gradient penalty lambda
+# LAMBDA = 10
 
-#num channels
-nc = 3
+# #num channels
+# nc = 3
 
-#size of latent vector(z)
-nz = 128
+# #size of latent vector(z)
+# nz = 128
 
-#size of generator feature maps
-ngf = image_size
+# #size of generator feature maps
+# ngf = image_size
 
-#size of discriminator feature maps
-ndf = image_size
+# #size of discriminator feature maps
+# ndf = image_size
 
-#num training epochs (running through the batch once)
-num_epochs = 30
+# #num training epochs (running through the batch once)
+# num_epochs = 30
 
-#optimizer learning rate
-lr = 0.0002
+# #optimizer learning rate
+# lr = 0.0002
 
-#beta1 hyperparam for Adam optimizers
-beta1 = 0.5
+# #beta1 hyperparam for Adam optimizers
+# beta1 = 0.5
 
-#num of GPUs available
-ngpu = 1
+# #num of GPUs available
+# ngpu = 1
 
-#Nummber of discriminator updates per generator updata
-tfd = 5
+# #Nummber of discriminator updates per generator updata
+# tfd = 5
 
-#What datasets we are using
-dataset = 'cifar10' # use 9 classes
-outset = 'cifar10' ## use 1 class
+# #What datasets we are using
+# dataset = 'cifar10' # use 9 classes
+# outset = 'cifar10' ## use 1 class
 
-# epsilons for hinge loss
-eps_1 = 0
-eps_2 = 0
-eps_3 = 0
+# # epsilons for hinge loss
+# eps_1 = 0
+# eps_2 = 0
+# eps_3 = 0
 
-# re-train or use a trained model
-load = True
+# # re-train or use a trained model
+# load = True
 
-# bins for histogram
-bins = list(range(16))
+# # bins for histogram
+# bins = list(range(16))
 
-# proportion of validation images to total images
-proportion_valid = 0.15
+# # proportion of validation images to total images
+# proportion_valid = 0.15
 
-# save images, histograms every __ epochs
-save_rate = 1
+# # save images, histograms every __ epochs
+# save_rate = 1
 
+
+DIM = 128
 
 
 ############################## Neural Networks Architecture ###############################
@@ -501,7 +503,7 @@ def BasicDisEncNeuro(input,output,filter_size,stride,padding,bias):
 
 # create encoder
 class Encoder(nn.Module):
-    def __init__(self,ngpu,nz=64,nc = 3):
+    def __init__(self,ngpu,ndf, nz=64,nc = 3):
         super(Encoder,self).__init__()
         self.nz = nz
         self.ngpu = ngpu
@@ -519,7 +521,6 @@ class Encoder(nn.Module):
 
 
 
-DIM = 128
 
 class Discriminator(nn.Module):
     def __init__(self,channel):
@@ -682,10 +683,10 @@ class DiscriminatorBlock(nn.Module):
 class Res_Discriminator(nn.Module):
     '''The discriminator (aka critic) model.'''
 
-    def __init__(self,channel):
+    def __init__(self,channel, ch):
         super().__init__()
 
-        feats = 128
+        feats = ch
         self.block1 = DiscriminatorBlock(channel, feats, downsample=True, first=True)
         self.block2 = DiscriminatorBlock(feats, feats, downsample=True)
         self.block3 = DiscriminatorBlock(feats, feats, downsample=False)

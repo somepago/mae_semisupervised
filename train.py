@@ -27,6 +27,7 @@ from src.utils import *
 import src.losses as losses
 import torch.nn.functional as F
 import argparse
+from anom_utils import post_process, generate_image, reconstruction_loss, latent_reconstruction_loss, l1_latent_reconstruction_loss
 
 from torch.utils.tensorboard import SummaryWriter
 
@@ -134,6 +135,7 @@ dataloader = load_data(opt)
 dataloaderTrain = dataloader['train']
 dataloaderTest =  dataloader['test']
 
+lr = opt.lr
 nz = opt.nz
 num_epochs = opt.num_epochs
 
@@ -170,8 +172,8 @@ writer = SummaryWriter('tboard'+opt.abnormal_class + opt.version + str(opt.inter
 
 #define the models
 
-netE = Encoder(ngpu=1,nz=nz, nc = 3)
-netD = Res_Discriminator(channel=6)
+netE = Encoder(ngpu=1,nz=nz, nc = 3,ndf = ndf)
+netD = Res_Discriminator(channel=6,ch= opt.ch)
 netG = ResnetGenerator32(z_dim = nz)
 netD2 = ResnetDiscriminator32(stack = 6 , ch= opt.ch)
 	
@@ -188,10 +190,10 @@ netD2.to(device)
 netG.to(device)
 netD.to(device)
 
-optimizerD = optim.Adam(netD.parameters(), lr = opt.lr, betas = (0, .9))
-optimizerD2 = optim.Adam(netD2.parameters(), lr = opt.lr, betas = (0, .9))
-optimizerG = optim.Adam(netG.parameters(), lr = opt.lr, betas = (0, .9))
-optimizerE = optim.Adam(netE.parameters(), lr = opt.lr, betas = (.5, .9))
+optimizerD = optim.Adam(netD.parameters(), lr = lr, betas = (0, .9))
+optimizerD2 = optim.Adam(netD2.parameters(), lr = lr, betas = (0, .9))
+optimizerG = optim.Adam(netG.parameters(), lr = lr, betas = (0, .9))
+optimizerE = optim.Adam(netE.parameters(), lr = lr, betas = (.5, .9))
 
 #gowthami- check what's the point of this?
 start = opt.start
@@ -214,10 +216,10 @@ if(opt.load_path==''):
 		if(epoch == 45):
 			if(use_decay_learning and not use_linearly_decay):
 				print('decrease learning rate to half',flush = True)
-				half_adjust_learning_rate(optimizerD, epoch, num_epochs)
-				half_adjust_learning_rate(optimizerD2,epoch,num_epochs)
-				half_adjust_learning_rate(optimizerG,epoch,num_epochs)
-				half_adjust_learning_rate(optimizerE,epoch,num_epochs)
+				half_adjust_learning_rate(optimizerD, epoch, num_epochs,lr)
+				half_adjust_learning_rate(optimizerD2,epoch,num_epochs,lr)
+				half_adjust_learning_rate(optimizerG,epoch,num_epochs,lr)
+				half_adjust_learning_rate(optimizerE,epoch,num_epochs,lr)
 			else:
 				print('still use 2e-4 for trainning')
 			
@@ -257,7 +259,6 @@ if(opt.load_path==''):
 				#Train with all real data
 				
 				real = data[0].to(device)
-				print(real.shape)
 				b_size = opt.batchsize
 				real = real.reshape(b_size, nc, opt.image_size, opt.image_size)
 
