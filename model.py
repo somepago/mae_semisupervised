@@ -18,7 +18,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from IPython.display import HTML
-from scipy.misc import imsave
+# from scipy.misc import imsave
 import torchvision
 from scipy import stats
 from torch.nn import functional as F
