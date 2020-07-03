@@ -32,12 +32,11 @@ from anom_utils import post_process, generate_image, reconstruction_loss, latent
 from torch.utils.tensorboard import SummaryWriter
 
 
-from loss import *
+from loss import threeDCritic, twoDCritic, DCritic, second_discriminator_loss, threeEGcritic, twoEGcritic, EGcritic
 from data import load_data
 from newevaluate import evaluate
 
 from model import Encoder,ResnetDiscriminator32,ResnetGenerator32,ResnetDiscriminator32,Res_Discriminator,Res_Encoder
-from loss  import *
 
 matplotlib.rc("text", usetex=False)
 
@@ -285,7 +284,9 @@ if(opt.load_path==''):
 					errD_real.backward()
 
 				optimizerD.step()
-				second_discriminator_loss(real, netD2, netE, netG, optimizerD2,fake,writer,use_penalty=opt.use_penalty)				
+				errD_recon = second_discriminator_loss(real, netD2, netE, netG,fake,writer,use_penalty=opt.use_penalty)
+				errD_recon.backward()
+				optimizerD2.step()
 
 
 			if(True):
@@ -323,7 +324,7 @@ if(opt.load_path==''):
 				print('[%d/%d][%d/%d]'
 					%(epoch, num_epochs, i, len(dataloaderTrain)))
 		
-
+### validating and saving area ###
 
 		if epoch % save_rate == 0:
 			score_list = []

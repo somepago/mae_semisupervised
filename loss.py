@@ -56,7 +56,7 @@ def interpolated_adversarial_loss(insample_batch, out_of_sample,a,b,netE):
 	return (loss1 + loss2 + loss3 + loss4).mean()
 
 
-def second_discriminator_loss( input1, netD2, netE, netG , optimizerD2, fake = None ,writer=None,use_penalty = True):
+def second_discriminator_loss( input1, netD2, netE, netG , fake = None ,writer=None,use_penalty = True):
 	netD2.zero_grad()
 	netE.zero_grad()
 	netG.zero_grad()
@@ -67,28 +67,20 @@ def second_discriminator_loss( input1, netD2, netE, netG , optimizerD2, fake = N
 	
 	output = netD2(real_real).view(-1)
 	output = F.relu(1 - output)
-	
 	errD2_real = output.mean()
-	errD2_real = errD2_real
-	errD2_real.backward()
 
 
 	output = netD2(real_recreal).view(-1)
 	output = F.relu(1+output)
 	errD2_fake = output.mean()
-	errD2_fake = errD2_fake
-	errD2_fake.backward()
 
-
+	loss = errD2_real + errD2_fake
 
 	if(use_penalty):
 		lossD2 = calc_gradient_penalty_secondD(netD2, input1, fake)
-		lossD2.backward()
-
-
-
-	optimizerD2.step()
-
+		loss+= lossD2
+        
+	return loss
 
 
 
