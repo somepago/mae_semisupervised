@@ -43,3 +43,14 @@ def half_adjust_learning_rate(optimizer, epoch, num_epochs, lrate):
     print('use learning rate %f' % lr)
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
+        
+        
+def anomaly_score(data, netG, netE, netD2, ngpu=1):
+	if (ngpu > 1):
+		a1 = netD2.module.feature(torch.cat((data,data),dim =1))
+		a2 = netD2.module.feature(torch.cat((data,netG(netE(data)).detach()),dim=1))
+	else:
+		a1 = netD2.feature(torch.cat((data,data),dim =1))
+		a2 = netD2.feature(torch.cat((data,netG(netE(data)).detach()),dim=1))
+	return l1_latent_reconstruction_loss(a1,a2)
+    

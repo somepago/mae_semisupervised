@@ -2,6 +2,8 @@ from __future__ import print_function
 #%matplotlib inline
 import argparse
 import os
+import time
+import datetime
 import random
 import torch
 import torch.nn as nn
@@ -27,9 +29,10 @@ from src.utils import *
 import src.losses as losses
 import torch.nn.functional as F
 import argparse
-from anom_utils import post_process, generate_image, reconstruction_loss, latent_reconstruction_loss, l1_latent_reconstruction_loss
+from anom_utils import post_process, generate_image, reconstruction_loss, latent_reconstruction_loss, l1_latent_reconstruction_loss, anomaly_score
 
 from torch.utils.tensorboard import SummaryWriter
+from torchvision.utils import save_image
 
 
 from loss import threeDCritic, twoDCritic, DCritic, second_discriminator_loss, threeEGcritic, twoEGcritic, EGcritic
@@ -69,11 +72,12 @@ parser.add_argument('--batchsize', type = int, default=64, help='pq|qp')
 parser.add_argument('--image_size', type = int, default= 32, help='size of training images')
 parser.add_argument('--num_channels', type = int, default=3, help='number of channels')
 
+parser.add_argument('--ngpu', type = int, default=1, help='number of GPUs available')
 parser.add_argument('--workers', type = int, default=4, help='pq|qp')
 parser.add_argument('--manualseed', type = int, default=999, help='pq|qp')
 parser.add_argument('--isize', type = int, default=32, help='pq|qp')
 parser.add_argument('--abnormal_class', default='cat', help='pq|qp')
-parser.add_argument('--version',default = 'idiotest256')
+parser.add_argument('--version',default = 'train_no_anom',choices = ['train_anom', 'train_no_anom'] ,help='training data includes anomalies or not')
 parser.add_argument('--lr',type = float ,default = 2e-4)
 parser.add_argument('--nz',type = int ,default = 256)
 parser.add_argument('--weights',type = float, default = 0.5, help='hyperparameter in AE loss')
@@ -89,7 +93,10 @@ parser.add_argument('--start', type=int, default = 0)
 parser.add_argument('--use_penalty', action = 'store_true')
 parser.add_argument('--ch', type=int,default = 128)
 parser.add_argument('--update_ratio', type=int,default = 5, help='number of discriminator updates to generator update')
-parser.add_argument('--save_rate_epochs',type = int, default = 1, help='save the model after this many epochs')
+parser.add_argument('--save_model_epochs',type = int, default = 10, help='save the model after this many epochs')
+parser.add_argument('--save_logs_epochs',type = int, default = 1, help='save the model after this many epochs')
+parser.add_argument('--save_model_root',  default = "logs",
+                help='Location to save the model wrt train file')
 
 
 ##version c means people use interpolate inside
@@ -111,13 +118,14 @@ ngf = opt.image_size
 ndf = opt.image_size
 
 #num of GPUs available
-ngpu = 1
+ngpu = opt.ngpu
 
 #Number of discriminator updates per generator update
 tfd = opt.update_ratio
 
 # save images, histograms every __ epochs
-save_rate = opt.save_rate_epochs
+save_rate_logs = opt.save_logs_epochs
+save_rate_model = opt.save_model_epochs
 
 # if we want to decay learning rate
 use_decay_learning = eval(opt.use_decay_learning)
@@ -138,36 +146,37 @@ lr = opt.lr
 nz = opt.nz
 num_epochs = opt.num_epochs
 
+##creating folders to save the models and logs
+date = str(datetime.datetime.now())
+date = date[:date.rfind(":")].replace("-", "")\
+                                     .replace(":", "")\
+                                     .replace(" ", "_")
 
-modelroot = "model" + opt.abnormal_class + opt.version + str(opt.interpolate_points)
-imgroot = "./image" + opt.abnormal_class + opt.version + str(opt.interpolate_points)
-saveModelRoot = "./model" + opt.abnormal_class + opt.version + str(opt.interpolate_points)
+log_dir = os.path.join(os.getcwd(),"logs" ,"log_" + date + '_'+opt.abnormal_class)
 
-print(modelroot)
+imgroot = os.path.join(log_dir, opt.version + '_' + str(opt.interpolate_points), 'image' )
+saveModelRoot = os.path.join(log_dir, opt.version + '_' + str(opt.interpolate_points), 'model' )
+tboardroot = os.path.join(log_dir, opt.version + '_' + str(opt.interpolate_points), 'tboard' )
 print(imgroot)
 print(saveModelRoot)
-
+print(tboardroot)
 
 try:
-	os.mkdir(saveModelRoot)
+	os.makedirs(saveModelRoot)
 except OSError: 
 	print("Model folder already exists")
+
 try:
-	os.mkdir(modelroot)
-except OSError: 
-	print("Model folder already exists")
-try:
-	os.mkdir(imgroot)
+	os.makedirs(imgroot)
 except OSError: 
 	print("Image folder already exists")
-	
 
+#set the summary writer
+writer = SummaryWriter(tboardroot)
 
+#set the device
 device = torch.device("cuda:%s" % (opt.cuda) if (torch.cuda.is_available() and ngpu > 0) else "cpu")
 print(device)
-
-writer = SummaryWriter('tboard'+opt.abnormal_class + opt.version + str(opt.interpolate_points) )
-
 
 #define the models
 
@@ -184,6 +193,7 @@ if torch.cuda.device_count() > 1:
   netG = nn.DataParallel(netG)
   netD2 = nn.DataParallel(netD2)
 
+# netE is the encoder, netG is the Generator,netD is the interpolation discriminator and netD2 is the reconstruction discriminator
 netE.to(device)
 netD2.to(device)
 netG.to(device)
@@ -199,53 +209,24 @@ start = opt.start
 print("Starting Training")
 
 # gowthami - what is this best score? and what is this train loss small?
-best_score = 0.5
+# best_score = 0.5
 ## small == 3000 ## smallest value is 3000
-train_loss_small = 3000
+# train_loss_small = 3000
 
 # gowthami - did they use it in the final run? chek with Yexin
 print(use_decay_learning, use_linearly_decay)
 print('start from %s ' % start)
 n_iter = 0
 
+starttime = time.time()
+
 if(opt.load_path==''):
 	test_score = []
 	valid_score = []
 	for epoch in range(start,num_epochs):
-		if(epoch == 45):
-			if(use_decay_learning and not use_linearly_decay):
-				print('decrease learning rate to half',flush = True)
-				half_adjust_learning_rate(optimizerD, epoch, num_epochs,lr)
-				half_adjust_learning_rate(optimizerD2,epoch,num_epochs,lr)
-				half_adjust_learning_rate(optimizerG,epoch,num_epochs,lr)
-				half_adjust_learning_rate(optimizerE,epoch,num_epochs,lr)
-			else:
-				print('still use 2e-4 for trainning')
-			
-			torch.save(netG.state_dict(),'%s/net45G.pth' % (saveModelRoot))
-			torch.save(netD.state_dict(),'%s/net45D.pth' % (saveModelRoot))
-			torch.save(netE.state_dict(),'%s/net45E.pth' % (saveModelRoot))
-			torch.save(netD2.state_dict(),'%s/net45D2.pth' % (saveModelRoot) )
-
-		if(epoch == 60):
-			print('save 60 epochs models ')
+        
 
 
-			torch.save(netG.state_dict(),'%s/net60G.pth' % (saveModelRoot))
-			torch.save(netD.state_dict(),'%s/net60D.pth' % (saveModelRoot))
-			torch.save(netE.state_dict(),'%s/net60E.pth' % (saveModelRoot))
-			torch.save(netD2.state_dict(),'%s/net60D2.pth' % (saveModelRoot) )
-
-		if(epoch == 70):
-			print('save 70 epochs models ')
-			
-
-			torch.save(netG.state_dict(),'%s/net70G.pth' % (saveModelRoot))
-			torch.save(netD.state_dict(),'%s/net70D.pth' % (saveModelRoot))
-			torch.save(netE.state_dict(),'%s/net70E.pth' % (saveModelRoot))
-			torch.save(netD2.state_dict(),'%s/net70D2.pth' % (saveModelRoot) )
-
-		
 
 		for i, data in enumerate(dataloaderTrain, 0):
 			n_iter = n_iter + 1;
@@ -326,61 +307,63 @@ if(opt.load_path==''):
 		
 ### validating and saving area ###
 
-		if epoch % save_rate == 0:
+		if epoch % save_rate_logs == 0:
 			score_list = []
 			score_label = []
 			score_list_train_feature = []
 			with torch.no_grad():
 				for i,data in enumerate(dataloaderTest, 0):
-					test = data[0].to(device)
-					if (torch.cuda.device_count() > 1):
-						a1 = netD2.module.feature(torch.cat((test,test),dim =1))
-						a2 = netD2.module.feature(torch.cat((test,netG(netE(test)).detach()),dim=1))
-					else:
-						a1 = netD2.feature(torch.cat((test,test),dim =1))
-						a2 = netD2.feature(torch.cat((test,netG(netE(test)).detach()),dim=1))
-					
-					score_list.append(l1_latent_reconstruction_loss(a1,a2 ))
+					test = data[0].to(device)					
+					score_list.append(anomaly_score(test,netG, netE, netD2, ngpu))
 					score_label.append(data[1].cpu().tolist())
-
 				score_list = list([loss for lst in score_list for loss in lst])
 				score_label = list([loss for lst in score_label for loss in lst])
 				score = evaluate(score_label,score_list)
-
 				test_score.append(score)
-				
 				print(('test:%f') % score)
 
 				for i,data in enumerate(dataloaderTrain,0):
-					test = data[0].to(device)
-
-					if (torch.cuda.device_count() > 1):
-						a1 = netD2.module.feature(torch.cat((test,test),dim =1))
-						a2 = netD2.module.feature(torch.cat((test,netG(netE(test)).detach()),dim=1))
-						score_list_train_feature.append(l1_latent_reconstruction_loss(a1,a2 ))
-					else:
-						a1 = netD2.feature(torch.cat((test,test),dim =1))
-						a2 = netD2.feature(torch.cat((test,netG(netE(test)).detach()),dim=1))
-						score_list_train_feature.append(l1_latent_reconstruction_loss(a1,a2 ))
-				
-
-				train_loss = np.array(list([loss for lst in score_list_train_feature for loss in lst])).mean()
-					
+					val = data[0].to(device)
+					score_list_train_feature.append(anomaly_score(val,netG, netE, netD2, ngpu))
+                    
+				train_loss = np.array(list([loss for lst in score_list_train_feature for loss in lst])).mean()	
 				print(('train:%f') % train_loss)
+                
+                
+				with open(os.path.join(imgroot, "epoch_losses.txt"), "a") as f:
+					currenttime = time.time()
+					elapsed = currenttime - starttime
+					f.write("{} \t {:.2f}\t {:.5f}\t {:.5f}".format(epoch, elapsed, score, train_loss) + "\n")
+				starttime = time.time()
+                
+               # save images
+				output = None
+				for i,data in enumerate(dataloaderTest, 0):
+					test = data[0].to(device)
+					row = torch.cat((test,netG(netE(test))), dim=2)
+					if output is None:
+						output = row
+					else:
+						output = torch.cat((output, row), dim=1)
+					save_image(output, os.path.join(imgroot, "img-{}.png".format(epoch)))
+					break
+                
+				if epoch % save_rate_model == 0:
+					torch.save(netG.state_dict(),'%s/netbestG_%s.pth' % (saveModelRoot, epoch))
+					torch.save(netD.state_dict(),'%s/netbestD_%s.pth' % (saveModelRoot,epoch))
+					torch.save(netE.state_dict(),'%s/netbestE_%s.pth' % (saveModelRoot,epoch))
+					torch.save(netD2.state_dict(),'%s/netbestD2_%s.pth' % (saveModelRoot,epoch))
 
-				if(epoch >= 60):
-					if(train_loss < train_loss_small):
-						train_loss_small = train_loss
-						print(train_loss_small)
-						print( ('best model test score %f') % score )
-						torch.save(netG.state_dict(),'%s/netbestG.pth' % (saveModelRoot))
-						torch.save(netD.state_dict(),'%s/netbestD.pth' % (saveModelRoot))
-						torch.save(netE.state_dict(),'%s/netbestE.pth' % (saveModelRoot))
-						torch.save(netD2.state_dict(),'%s/netbestD2.pth' % (saveModelRoot))
 
-
-
-torch.save(netG.state_dict(),'%s/netlastG.pth' % (saveModelRoot))
-torch.save(netD.state_dict(),'%s/netlastD.pth' % (saveModelRoot))
-torch.save(netE.state_dict(),'%s/netlastE.pth' % (saveModelRoot))
-torch.save(netD2.state_dict(),'%s/netlastD2.pth' % (saveModelRoot) )
+                    
+                    
+                    
+# 		if(epoch == 45):
+# 			if(use_decay_learning and not use_linearly_decay):
+# 				print('decrease learning rate to half',flush = True)
+# 				half_adjust_learning_rate(optimizerD, epoch, num_epochs,lr)
+# 				half_adjust_learning_rate(optimizerD2,epoch,num_epochs,lr)
+# 				half_adjust_learning_rate(optimizerG,epoch,num_epochs,lr)
+# 				half_adjust_learning_rate(optimizerE,epoch,num_epochs,lr)
+# 			else:
+# 				print('still use 2e-4 for trainning')
