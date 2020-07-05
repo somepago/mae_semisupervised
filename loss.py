@@ -56,7 +56,7 @@ def interpolated_adversarial_loss(insample_batch, out_of_sample,a,b,netE):
 	return (loss1 + loss2 + loss3 + loss4).mean()
 
 
-def second_discriminator_loss( input1, netD2, netE, netG , fake = None ,writer=None,use_penalty = True):
+def second_discriminator_loss(input1, netD2, netE, netG , fake = None ,writer=None,use_penalty = True):
 	netD2.zero_grad()
 	netE.zero_grad()
 	netG.zero_grad()
@@ -77,7 +77,7 @@ def second_discriminator_loss( input1, netD2, netE, netG , fake = None ,writer=N
 	loss = errD2_real + errD2_fake
 
 	if(use_penalty):
-		lossD2 = calc_gradient_penalty_secondD(netD2, input1, fake)
+		lossD2 = calc_gradient_penalty(netD2, input1, fake)
 		loss+= lossD2
         
 	return loss
@@ -93,27 +93,7 @@ def gminusgegloss(noise,netG,netE):
 
 
 
-
-def calc_gradient_penalty(netD, real_data, fake_data):
-	b_size = real_data.shape[0]
-	alpha = torch.unsqueeze(torch.unsqueeze((torch.rand(b_size, 1)), -1), -1)
-	alpha = alpha.to(device)
-
-	#this finds stuff on the line between real and fake 
-	interpolates = alpha * real_data + ((1 - alpha) * fake_data)
-	interpolates = interpolates.to(device)
-	interpolates = torch.tensor(interpolates, requires_grad = True)
-
-	#Runs the discriminator on the resulting interpolated points
-	disc_interpolates = netD(interpolates)
-
-	#Calculates the gradient
-	gradients = autograd.grad(outputs = disc_interpolates, inputs=interpolates, grad_outputs = torch.ones(disc_interpolates.size()).to(device) , create_graph = True, retain_graph = True, only_inputs=True)[0]
-	gradient_penalty = ((gradients.norm(2, dim=1) - 1) ** 2).mean() * LAMBDA
-	return gradient_penalty
-
-
-def calc_gradient_penalty_secondD(netD2, real_data, fake_data):
+def calc_gradient_penalty(netD2, real_data, fake_data):
 	b_size = real_data.shape[0]
 	alpha = torch.unsqueeze(torch.unsqueeze((torch.rand(b_size, 1)), -1), -1)
 	# alpha = torch.rand(b_size, 1)
@@ -356,12 +336,12 @@ def threeDCritic(netE,netG,netD,x,alpha1,alpha2,writer,n_iter,t,reg=0.2):
 	## non-interpolate point should be close to 1
 	real1_loss = torch.pow(netD(standard1),2).mean()
 
-	if(t == 4):
-		writer.add_scalars('Df1Loss', {'f1_loss':fake1_loss.data.cpu().numpy()}, n_iter)
-		writer.add_scalars('Df2Loss', {'f2_loss':(fake2_loss).data.cpu().numpy()}, n_iter)
-		writer.add_scalars('Df3Loss', {'f3_loss':(fake3_loss).data.cpu().numpy()}, n_iter)
-		writer.add_scalars('Dr1Loss', {'r1_loss':(real1_loss).data.cpu().numpy()}, n_iter)
-		writer.add_scalars('DtotalLoss', {'total':((fake1_loss/3 +  fake2_loss/3 + fake3_loss/3) + real1_loss).data.cpu().numpy()}, n_iter)
+# 	if(t == 4):
+# 		writer.add_scalars('Df1Loss', {'f1_loss':fake1_loss.data.cpu().numpy()}, n_iter)
+# 		writer.add_scalars('Df2Loss', {'f2_loss':(fake2_loss).data.cpu().numpy()}, n_iter)
+# 		writer.add_scalars('Df3Loss', {'f3_loss':(fake3_loss).data.cpu().numpy()}, n_iter)
+# 		writer.add_scalars('Dr1Loss', {'r1_loss':(real1_loss).data.cpu().numpy()}, n_iter)
+# 		writer.add_scalars('DtotalLoss', {'total':((fake1_loss/3 +  fake2_loss/3 + fake3_loss/3) + real1_loss).data.cpu().numpy()}, n_iter)
 
 
 	return (fake1_loss/3 +  fake2_loss/3 + fake3_loss/3) + real1_loss

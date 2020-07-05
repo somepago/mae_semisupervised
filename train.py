@@ -30,7 +30,7 @@ import torch.nn.functional as F
 from anom_utils import post_process, generate_image, reconstruction_loss, latent_reconstruction_loss
 from anom_utils import l1_latent_reconstruction_loss, anomaly_score, score_and_auc
 
-from torch.utils.tensorboard import SummaryWriter
+# from torch.utils.tensorboard import SummaryWriter
 from torchvision.utils import save_image
 
 
@@ -180,7 +180,7 @@ except OSError:
 	print("Image folder already exists")
 
 #set the summary writer
-writer = SummaryWriter(tboardroot)
+# writer = SummaryWriter(tboardroot)
 
 #set the device
 device = torch.device("cuda:%s" % (opt.cuda) if (torch.cuda.is_available() and ngpu > 0) else "cpu")
@@ -253,7 +253,7 @@ if(opt.load_path==''):
 					alpha1 = torch.FloatTensor(b_size, 1).uniform_(0, 0.5)
 					alpha2 = torch.FloatTensor(b_size, 1).uniform_(0, 0.5)
 				
-					errD_real = threeDCritic(netE,netG,netD,real,alpha1,alpha2,reg=0.2,n_iter=n_iter,t=t,writer=writer)
+					errD_real = threeDCritic(netE,netG,netD,real,alpha1,alpha2,reg=0.2,n_iter=n_iter,t=t,writer=None)
 				elif(opt.interpolate_points == 2):
 					alpha = torch.FloatTensor(b_size, 1).uniform_(0, 0.5)
 					errD_real = twoDCritic(netE,netG,netD,real,alpha,reg=0.2)
