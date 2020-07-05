@@ -1,5 +1,9 @@
 import torch
 import torchvision.transforms as transforms
+from newevaluate import evaluate
+from itertools import chain
+import numpy as np
+
 
 def post_process(image):
 	image = image.view(-1, 3, 32, 32)
@@ -53,4 +57,26 @@ def anomaly_score(data, netG, netE, netD2, ngpu=1):
 		a1 = netD2.feature(torch.cat((data,data),dim =1))
 		a2 = netD2.feature(torch.cat((data,netG(netE(data)).detach()),dim=1))
 	return l1_latent_reconstruction_loss(a1,a2)
-    
+
+def score_and_auc(dataLoader, netG, netE, netD2, device, ngpu=1, break_iters = 10):
+	score_list = []
+	score_label = []
+	count=0
+	with torch.no_grad():
+		for i,data in enumerate(dataLoader, 0):
+			if count>=break_iters:
+				break
+			real = data[0].to(device)
+			score_label.append(data[1].to(device).tolist())
+			score_list.append(anomaly_score(real,netG, netE, netD2, ngpu))
+			
+			count+=1
+		score_list = list(chain.from_iterable(score_list))
+		score_label = list(chain.from_iterable(score_label))
+		
+		if np.sum(score_label) == 0:
+			score_auc = 0
+		else:
+			score_auc = evaluate(score_label,score_list)
+		score_anom_mean = np.array(score_list).mean()
+	return score_auc, score_anom_mean

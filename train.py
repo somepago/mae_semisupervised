@@ -5,6 +5,8 @@ import os
 import time
 import datetime
 import random
+from itertools import chain
+
 import torch
 import torch.nn as nn
 import torch.nn.parallel
@@ -20,16 +22,13 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import matplotlib
-# import matplotlib.animation as animation
-# from scipy.misc import imsave
 import torchvision
 # from scipy import stats
-from torch.nn import functional as F
 from src.utils import *
 import src.losses as losses
 import torch.nn.functional as F
-import argparse
-from anom_utils import post_process, generate_image, reconstruction_loss, latent_reconstruction_loss, l1_latent_reconstruction_loss, anomaly_score
+from anom_utils import post_process, generate_image, reconstruction_loss, latent_reconstruction_loss
+from anom_utils import l1_latent_reconstruction_loss, anomaly_score, score_and_auc
 
 from torch.utils.tensorboard import SummaryWriter
 from torchvision.utils import save_image
@@ -42,6 +41,9 @@ from newevaluate import evaluate
 from model import Encoder,ResnetDiscriminator32,ResnetGenerator32,ResnetDiscriminator32,Res_Discriminator,Res_Encoder
 
 matplotlib.rc("text", usetex=False)
+
+import wandb
+
 
 
 #gowthami - check if thhese are used anywhere, otherwise remove
@@ -67,28 +69,29 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--manualSeed', type = int, default=999, help='set the seed for the model manually')
 parser.add_argument('--dataroot',  default = "./CIFAR10",
                 help='Location of the data')
-parser.add_argument('--dataset', default='cifar10', help='pq|qp')
-parser.add_argument('--batchsize', type = int, default=64, help='pq|qp')
+parser.add_argument('--dataset', default='cifar10', help='name of the dataset we are working with')
+parser.add_argument('--batchsize', type = int, default=64, help='train/val batchsize')
 parser.add_argument('--image_size', type = int, default= 32, help='size of training images')
 parser.add_argument('--num_channels', type = int, default=3, help='number of channels')
 
 parser.add_argument('--ngpu', type = int, default=1, help='number of GPUs available')
-parser.add_argument('--workers', type = int, default=4, help='pq|qp')
-parser.add_argument('--manualseed', type = int, default=999, help='pq|qp')
+parser.add_argument('--workers', type = int, default=4, help='number of worker CPU nodes')
 parser.add_argument('--isize', type = int, default=32, help='pq|qp')
-parser.add_argument('--abnormal_class', default='cat', help='pq|qp')
+parser.add_argument('--abnormal_class', default='cat', help='name of the abnormal class, changes based on the dataset')
+#for version argument, if we are training with anomalies use train_anom, otherwise use train_no_anom
 parser.add_argument('--version',default = 'train_no_anom',choices = ['train_anom', 'train_no_anom'] ,help='training data includes anomalies or not')
+parser.add_argument('--anom_pc',type = float ,default = 0, help='percentage of each anomaly class to use in training')
 parser.add_argument('--lr',type = float ,default = 2e-4)
 parser.add_argument('--nz',type = int ,default = 256)
 parser.add_argument('--weights',type = float, default = 0.5, help='hyperparameter in AE loss')
-parser.add_argument('--load_path',default = '', help='path to trained model, otherwise the model will train from scratch')
+parser.add_argument('--model_load_path',default = '', help='path to trained model, otherwise the model will train from scratch')
 parser.add_argument('--cuda',type= int, default = 0)
 parser.add_argument('--use_mode',default = 'last')
-parser.add_argument('--interpolate_points',type = int, default = 1)
+parser.add_argument('--interpolate_points',type = int, default = 2, help = 'number of interpolated in training data')
 parser.add_argument('--use_decay_learning',type=str, default = 'False')
 parser.add_argument('--use_linearly_decay',type=str, default = 'False')
 
-parser.add_argument('--num_epochs',type = int, default = 100)
+parser.add_argument('--num_epochs',type = int, default = 100, help = 'number of training epochs')
 parser.add_argument('--start', type=int, default = 0)
 parser.add_argument('--use_penalty', action = 'store_true')
 parser.add_argument('--ch', type=int,default = 128)
@@ -102,6 +105,11 @@ parser.add_argument('--save_model_root',  default = "logs",
 ##version c means people use interpolate inside
 
 opt = parser.parse_args()
+runname = str(opt.abnormal_class) + '_' + str(opt.version) + '_' + str(opt.anom_pc) + 'pc'
+
+wandb.init(project="mae-trial", name=runname)
+
+wandb.config.update(opt)
 
 print("Chosen Seed: ", opt.manualSeed)
 random.seed(opt.manualSeed)
@@ -137,7 +145,7 @@ opt.use_spectural_norm = False
 
 print(opt)
 
-batch_size = opt.batchsize
+b_size = opt.batchsize
 dataloader = load_data(opt)
 dataloaderTrain = dataloader['train']
 dataloaderTest =  dataloader['test']
@@ -224,12 +232,9 @@ if(opt.load_path==''):
 	test_score = []
 	valid_score = []
 	for epoch in range(start,num_epochs):
-        
-
-
 
 		for i, data in enumerate(dataloaderTrain, 0):
-			n_iter = n_iter + 1;
+			n_iter = n_iter + 1
 			# optimize discriminator tfd times
 			for t in range(tfd):
 				netD.zero_grad()
@@ -239,9 +244,7 @@ if(opt.load_path==''):
 				#Train with all real data
 				
 				real = data[0].to(device)
-				b_size = opt.batchsize
 				real = real.reshape(b_size, nc, opt.image_size, opt.image_size)
-
 				noise = netE(real).detach()
 				fake = netG(noise).detach()
 
@@ -269,7 +272,8 @@ if(opt.load_path==''):
 				errD_recon.backward()
 				optimizerD2.step()
 
-
+            
+                
 			if(True):
 # 				noise2 = torch.randn(b_size, nz, device = device)
 				
@@ -301,6 +305,10 @@ if(opt.load_path==''):
 				errG.backward()
 				optimizerG.step()
 				optimizerE.step()
+                
+				wb_iter = len(dataloaderTrain)*epoch + n_iter
+				wandb.log({'epoch': epoch,'iteration':wb_iter ,'loss_Dinter': errD_real, 
+                          'loss_Drecon':errD_recon, 'loss_AE': errG})
 			if i % 50 == 0:
 				print('[%d/%d][%d/%d]'
 					%(epoch, num_epochs, i, len(dataloaderTrain)))
@@ -308,32 +316,23 @@ if(opt.load_path==''):
 ### validating and saving area ###
 
 		if epoch % save_rate_logs == 0:
-			score_list = []
-			score_label = []
-			score_list_train_feature = []
 			with torch.no_grad():
-				for i,data in enumerate(dataloaderTest, 0):
-					test = data[0].to(device)					
-					score_list.append(anomaly_score(test,netG, netE, netD2, ngpu))
-					score_label.append(data[1].cpu().tolist())
-				score_list = list([loss for lst in score_list for loss in lst])
-				score_label = list([loss for lst in score_label for loss in lst])
-				score = evaluate(score_label,score_list)
-				test_score.append(score)
-				print(('test:%f') % score)
-
-				for i,data in enumerate(dataloaderTrain,0):
-					val = data[0].to(device)
-					score_list_train_feature.append(anomaly_score(val,netG, netE, netD2, ngpu))
-                    
-				train_loss = np.array(list([loss for lst in score_list_train_feature for loss in lst])).mean()	
-				print(('train:%f') % train_loss)
                 
+                # calculcating auroc on test dataset
+				test_auc, test_anom_score = score_and_auc(dataloaderTest, netG, netE, netD2,device ,ngpu, break_iters = 70)
+				print(('test_auc:%f') % test_auc)
                 
+				_, val_anom_score = score_and_auc(dataloaderTrain, netG, netE, netD2, device,ngpu, break_iters = 10)
+				print(('train_score:%f') % val_anom_score)
+                
+				wandb.log({'test_auc': test_auc,  
+                          'test_anom_mean':test_anom_score, 'train_anom_mean': val_anom_score})
+                
+                # printing epoch losses
 				with open(os.path.join(imgroot, "epoch_losses.txt"), "a") as f:
 					currenttime = time.time()
 					elapsed = currenttime - starttime
-					f.write("{} \t {:.2f}\t {:.5f}\t {:.5f}".format(epoch, elapsed, score, train_loss) + "\n")
+					f.write("{} \t {:.2f}\t {:.5f}\t {:.5f}\t {:.5f}".format(epoch, elapsed, test_auc, test_anom_score, val_anom_score) + "\n")
 				starttime = time.time()
                 
                # save images
