@@ -20,22 +20,20 @@ import torchvision.utils as vutils
 import math
 import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.animation as animation
+# import matplotlib.animation as animation
 import matplotlib
 import torchvision
-# from scipy import stats
 from src.utils import *
 import src.losses as losses
 import torch.nn.functional as F
 from anom_utils import post_process, generate_image, reconstruction_loss, latent_reconstruction_loss
 from anom_utils import l1_latent_reconstruction_loss, anomaly_score, score_and_auc
-
-# from torch.utils.tensorboard import SummaryWriter
 from torchvision.utils import save_image
 
 
 from loss import threeDCritic, twoDCritic, DCritic, second_discriminator_loss, threeEGcritic, twoEGcritic, EGcritic
-from data import load_data
+# from data_old import load_data
+import data
 from newevaluate import evaluate
 
 from model import Encoder,ResnetDiscriminator32,ResnetGenerator32,ResnetDiscriminator32,Res_Discriminator,Res_Encoder
@@ -67,20 +65,23 @@ eps_3 = 0
 parser = argparse.ArgumentParser()
 
 parser.add_argument('--manualSeed', type = int, default=999, help='set the seed for the model manually')
-parser.add_argument('--dataroot',  default = "./CIFAR10",
+parser.add_argument('--dataroot',  default = "./CIFAR10/",
                 help='Location of the data')
 parser.add_argument('--dataset', default='cifar10', help='name of the dataset we are working with')
+#for version argument, if we are training with anomalies use train_anom, otherwise use train_no_anom
+parser.add_argument('--version',default = 'train_no_anom',choices = ['train_anom', 'train_no_anom'] ,help='training data includes anomalies or not')
+parser.add_argument('--anom_pc',type = float ,default = 0, help='percentage of each anomaly class to use in training')
 parser.add_argument('--batchsize', type = int, default=64, help='train/val batchsize')
+parser.add_argument('--val_split', type = float, default=0.01, help='%of train data to split into val data')
+
 parser.add_argument('--image_size', type = int, default= 32, help='size of training images')
 parser.add_argument('--num_channels', type = int, default=3, help='number of channels')
 
 parser.add_argument('--ngpu', type = int, default=1, help='number of GPUs available')
-parser.add_argument('--workers', type = int, default=4, help='number of worker CPU nodes')
+parser.add_argument('--workers', type = int, default=32, help='number of worker CPU nodes')
 parser.add_argument('--isize', type = int, default=32, help='pq|qp')
-parser.add_argument('--abnormal_class', default='cat', help='name of the abnormal class, changes based on the dataset')
-#for version argument, if we are training with anomalies use train_anom, otherwise use train_no_anom
-parser.add_argument('--version',default = 'train_no_anom',choices = ['train_anom', 'train_no_anom'] ,help='training data includes anomalies or not')
-parser.add_argument('--anom_pc',type = float ,default = 0, help='percentage of each anomaly class to use in training')
+parser.add_argument('--abnormal_classes', default='cat', help='name of the abnormal class, changes based on the dataset')
+
 parser.add_argument('--lr',type = float ,default = 2e-4)
 parser.add_argument('--nz',type = int ,default = 256)
 parser.add_argument('--weights',type = float, default = 0.5, help='hyperparameter in AE loss')
@@ -105,10 +106,9 @@ parser.add_argument('--save_model_root',  default = "logs",
 ##version c means people use interpolate inside
 
 opt = parser.parse_args()
-runname = str(opt.abnormal_class) + '_' + str(opt.version) + '_' + str(opt.anom_pc) + 'pc'
+runname = str(opt.abnormal_classes) + '_' + str(opt.version) + '_' + str(opt.anom_pc) + 'pc'
 
 wandb.init(project="mae-trial", name=runname)
-
 wandb.config.update(opt)
 
 print("Chosen Seed: ", opt.manualSeed)
@@ -145,10 +145,46 @@ opt.use_spectural_norm = False
 
 print(opt)
 
+
+
+#loading the data
+
 b_size = opt.batchsize
-dataloader = load_data(opt)
-dataloaderTrain = dataloader['train']
-dataloaderTest =  dataloader['test']
+anom_classes = eval(opt.abnormal_classes)
+
+transform = transforms.Compose(
+            [
+                transforms.Resize(opt.isize),
+                transforms.ToTensor(),
+                transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+            ]
+        )
+
+if opt.dataset ==  'cifar10':
+	dataset_train = data.CIFAR10Anom(root=opt.dataroot, stage='train', transform = transform,
+								anom_classes=anom_classes, valid_split=opt.val_split,
+								anom_ratio=opt.anom_pc, seed = opt.manualSeed)
+	dataset_valid = data.CIFAR10Anom(root=opt.dataroot, stage='valid', transform = transform,
+								anom_classes=anom_classes, valid_split=opt.val_split,
+								anom_ratio=opt.anom_pc, seed = opt.manualSeed)
+	dataset_test =  data.CIFAR10Anom(root=opt.dataroot, stage='test', transform = transform,
+								anom_classes=anom_classes, valid_split=0,
+								anom_ratio=opt.anom_pc, seed = opt.manualSeed)
+	
+	trainloader = torch.utils.data.DataLoader(dataset_train, batch_size=b_size, 
+											  drop_last = True,
+                                           shuffle = True, num_workers=opt.workers)
+	validloader = torch.utils.data.DataLoader(dataset_valid, batch_size=b_size, 
+											  drop_last = True,
+                                           shuffle = True, num_workers=opt.workers)
+	testloader = torch.utils.data.DataLoader(dataset_test, batch_size=b_size, 
+											 drop_last = True,
+                                           shuffle = False, num_workers=opt.workers)
+	
+
+# dataloader = load_data(opt)
+# dataloaderTrain = dataloader['train']
+# dataloaderTest =  dataloader['test']
 
 lr = opt.lr
 nz = opt.nz
@@ -160,7 +196,7 @@ date = date[:date.rfind(":")].replace("-", "")\
                                      .replace(":", "")\
                                      .replace(" ", "_")
 
-log_dir = os.path.join(os.getcwd(),"logs" ,"log_" + date + '_'+opt.abnormal_class)
+log_dir = os.path.join(os.getcwd(),"logs" ,"log_" + date + '_'+opt.abnormal_classes)
 
 imgroot = os.path.join(log_dir, opt.version + '_' + str(opt.interpolate_points), 'image' )
 saveModelRoot = os.path.join(log_dir, opt.version + '_' + str(opt.interpolate_points), 'model' )
@@ -187,6 +223,7 @@ device = torch.device("cuda:%s" % (opt.cuda) if (torch.cuda.is_available() and n
 print(device)
 
 #define the models
+# netE is the encoder, netG is the Generator,netD is the interpolation discriminator and netD2 is the reconstruction discriminator
 
 netE = Encoder(ngpu=1,nz=nz, nc = 3,ndf = ndf)
 netD = Res_Discriminator(channel=6,ch= opt.ch)
@@ -201,7 +238,7 @@ if torch.cuda.device_count() > 1:
   netG = nn.DataParallel(netG)
   netD2 = nn.DataParallel(netD2)
 
-# netE is the encoder, netG is the Generator,netD is the interpolation discriminator and netD2 is the reconstruction discriminator
+
 netE.to(device)
 netD2.to(device)
 netG.to(device)
@@ -228,12 +265,12 @@ n_iter = 0
 
 starttime = time.time()
 
-if(opt.load_path==''):
+if(opt.model_load_path==''):
 	test_score = []
 	valid_score = []
 	for epoch in range(start,num_epochs):
 
-		for i, data in enumerate(dataloaderTrain, 0):
+		for i, data in enumerate(trainloader, 0):
 			n_iter = n_iter + 1
 			# optimize discriminator tfd times
 			for t in range(tfd):
@@ -242,7 +279,6 @@ if(opt.load_path==''):
 				netG.zero_grad()
 				
 				#Train with all real data
-				
 				real = data[0].to(device)
 				real = real.reshape(b_size, nc, opt.image_size, opt.image_size)
 				noise = netE(real).detach()
@@ -268,7 +304,7 @@ if(opt.load_path==''):
 					errD_real.backward()
 
 				optimizerD.step()
-				errD_recon = second_discriminator_loss(real, netD2, netE, netG,fake,writer,use_penalty=opt.use_penalty)
+				errD_recon = second_discriminator_loss(real, netD2, netE, netG,fake,writer=None,use_penalty=opt.use_penalty)
 				errD_recon.backward()
 				optimizerD2.step()
 
@@ -306,12 +342,12 @@ if(opt.load_path==''):
 				optimizerG.step()
 				optimizerE.step()
                 
-				wb_iter = len(dataloaderTrain)*epoch + n_iter
+				wb_iter = len(trainloader)*epoch + n_iter
 				wandb.log({'epoch': epoch,'iteration':wb_iter ,'loss_Dinter': errD_real, 
                           'loss_Drecon':errD_recon, 'loss_AE': errG})
 			if i % 50 == 0:
 				print('[%d/%d][%d/%d]'
-					%(epoch, num_epochs, i, len(dataloaderTrain)))
+					%(epoch, num_epochs, i, len(trainloader)))
 		
 ### validating and saving area ###
 
@@ -319,10 +355,10 @@ if(opt.load_path==''):
 			with torch.no_grad():
                 
                 # calculcating auroc on test dataset
-				test_auc, test_anom_score = score_and_auc(dataloaderTest, netG, netE, netD2,device ,ngpu, break_iters = 70)
+				test_auc, test_anom_score = score_and_auc(testloader, netG, netE, netD2,device ,ngpu, break_iters = 70)
 				print(('test_auc:%f') % test_auc)
                 
-				_, val_anom_score = score_and_auc(dataloaderTrain, netG, netE, netD2, device,ngpu, break_iters = 10)
+				_, val_anom_score = score_and_auc(validloader, netG, netE, netD2, device,ngpu, break_iters = 50)
 				print(('train_score:%f') % val_anom_score)
                 
 				wandb.log({'test_auc': test_auc,  
@@ -337,8 +373,8 @@ if(opt.load_path==''):
                 
                # save images
 				output = None
-				for i,data in enumerate(dataloaderTest, 0):
-					test = data[0].to(device)
+				for i,data in enumerate(testloader, 0):
+					test = data[0][:32,:,:,:].to(device)
 					row = torch.cat((test,netG(netE(test))), dim=2)
 					if output is None:
 						output = row
