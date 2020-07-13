@@ -58,25 +58,31 @@ def anomaly_score(data, netG, netE, netD2, ngpu=1):
 		a2 = netD2.feature(torch.cat((data,netG(netE(data)).detach()),dim=1))
 	return l1_latent_reconstruction_loss(a1,a2)
 
-def score_and_auc(dataLoader, netG, netE, netD2, device, ngpu=1, break_iters = 10):
+def score_and_auc(dataLoader, netG, netE, netD2, device, ngpu=1, break_iters = 100):
 	score_list = []
 	score_label = []
 	count=0
 	with torch.no_grad():
 		for i,data in enumerate(dataLoader, 0):
-			if count>=break_iters:
-				break
+# 			targets = data[1].to(device)
+# 			print(torch.unique(targets, return_counts=True))
+# 			if count>=break_iters:
+# 				break
 			real = data[0].to(device)
 			score_label.append(data[1].to(device).tolist())
 			score_list.append(anomaly_score(real,netG, netE, netD2, ngpu))
 			
 			count+=1
+# 		import ipdb;ipdb.set_trace()
 		score_list = list(chain.from_iterable(score_list))
 		score_label = list(chain.from_iterable(score_label))
-		
+		print(score_list[:5], score_list[-5:])
+		print(score_label[:5], score_label[-5:])
+		score_anom_mean = np.array(score_list).mean()
 		if np.sum(score_label) == 0:
+			print('only non anomolous samples are passed' + str(len(score_label)))
 			score_auc = 0
 		else:
 			score_auc = evaluate(score_label,score_list)
-		score_anom_mean = np.array(score_list).mean()
+		
 	return score_auc, score_anom_mean

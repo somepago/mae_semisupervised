@@ -17,6 +17,7 @@ import matplotlib.pyplot as plt
 from matplotlib import rc
 from sklearn.metrics import precision_recall_fscore_support as prf, accuracy_score
 import numpy as np
+from sklearn.metrics import roc_auc_score
 rc('font', **{'family': 'serif', 'serif': ['Computer Modern']})
 rc('text', usetex=True)
 
@@ -45,37 +46,39 @@ def pr(labels,scores,percen):
 
 
 ##
-def roc(labels, scores, saveto=None):
+def roc(labels, scores, saveto=None):	
+    return roc_auc_score(labels, scores)
+
     """Compute ROC curve and ROC area for each class"""
-    fpr = dict()
-    tpr = dict()
-    roc_auc = dict()
-    labels = labels
-    scores = scores
+#     fpr = dict()
+#     tpr = dict()
+#     roc_auc = dict()
+#     labels = labels
+#     scores = scores
 
-    # True/False Positive Rates.
-    fpr, tpr, _ = roc_curve(labels, scores)
-    roc_auc = auc(fpr, tpr)
+#     # True/False Positive Rates.
+#     fpr, tpr, _ = roc_curve(labels, scores)
+#     roc_auc = auc(fpr, tpr)
 
-    # Equal Error Rate
-    eer = brentq(lambda x: 1. - x - interp1d(fpr, tpr)(x), 0., 1.)
+#     # Equal Error Rate
+#     eer = brentq(lambda x: 1. - x - interp1d(fpr, tpr)(x), 0., 1.)
 
-    if saveto:
-        plt.figure()
-        lw = 2
-        plt.plot(fpr, tpr, color='darkorange', lw=lw, label='(AUC = %0.2f, EER = %0.2f)' % (roc_auc, eer))
-        plt.plot([eer], [1-eer], marker='o', markersize=5, color="navy")
-        plt.plot([0, 1], [1, 0], color='navy', lw=1, linestyle=':')
-        plt.xlim([0.0, 1.0])
-        plt.ylim([0.0, 1.05])
-        plt.xlabel('False Positive Rate')
-        plt.ylabel('True Positive Rate')
-        plt.title('Receiver operating characteristic')
-        plt.legend(loc="lower right")
-        plt.savefig(os.path.join(saveto, "ROC.pdf"))
-        plt.close()
+#     if saveto:
+#         plt.figure()
+#         lw = 2
+#         plt.plot(fpr, tpr, color='darkorange', lw=lw, label='(AUC = %0.2f, EER = %0.2f)' % (roc_auc, eer))
+#         plt.plot([eer], [1-eer], marker='o', markersize=5, color="navy")
+#         plt.plot([0, 1], [1, 0], color='navy', lw=1, linestyle=':')
+#         plt.xlim([0.0, 1.0])
+#         plt.ylim([0.0, 1.05])
+#         plt.xlabel('False Positive Rate')
+#         plt.ylabel('True Positive Rate')
+#         plt.title('Receiver operating characteristic')
+#         plt.legend(loc="lower right")
+#         plt.savefig(os.path.join(saveto, "ROC.pdf"))
+#         plt.close()
 
-    return roc_auc
+    
 
 def auprc(labels, scores):
     ap = average_precision_score(labels, scores)

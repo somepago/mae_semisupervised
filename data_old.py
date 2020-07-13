@@ -274,9 +274,10 @@ def get_cifar_anomaly_dataset(trn_img, trn_lbl, tst_img, tst_lbl, abn_cls_idx=0,
     abn_tst_lbl[:] = 1
 
     # --
-    if manualseed != -1:
+    if manualseed != 5:
         # Random seed.
         # Concatenate the original train and test sets.
+        print('Im at manual seed area in dataloader')
         nrm_img = np.concatenate((nrm_trn_img, nrm_tst_img), axis=0)
         nrm_lbl = np.concatenate((nrm_trn_lbl, nrm_tst_lbl), axis=0)
         abn_img = np.concatenate((abn_trn_img, abn_tst_img), axis=0)
@@ -305,125 +306,128 @@ def get_cifar_anomaly_dataset(trn_img, trn_lbl, tst_img, tst_lbl, abn_cls_idx=0,
     #        . -> abnormal
     new_trn_img = np.copy(nrm_trn_img)
     new_trn_lbl = np.copy(nrm_trn_lbl)
-    new_tst_img = np.concatenate((nrm_tst_img, abn_trn_img, abn_tst_img), axis=0)
-    new_tst_lbl = np.concatenate((nrm_tst_lbl, abn_trn_lbl, abn_tst_lbl), axis=0)
+#     new_tst_img = np.concatenate((nrm_tst_img, abn_trn_img, abn_tst_img), axis=0)
+#     new_tst_lbl = np.concatenate((nrm_tst_lbl, abn_trn_lbl, abn_tst_lbl), axis=0)
+    new_tst_img = np.concatenate((nrm_tst_img[:1000], abn_tst_img), axis=0)
+    new_tst_lbl = np.concatenate((nrm_tst_lbl[:1000], abn_tst_lbl), axis=0)
+    print(len(new_trn_lbl), len(new_tst_lbl))
     return new_trn_img, new_trn_lbl, new_tst_img, new_tst_lbl
 
 
 
-def get_cifar_anomaly_datasetop(trn_img, trn_lbl, tst_img, tst_lbl, abn_cls_idx=0, manualseed=-1):
-    """[summary]
-    Arguments:
-        trn_img {np.array} -- Training images
-        trn_lbl {np.array} -- Training labels
-        tst_img {np.array} -- Test     images
-        tst_lbl {np.array} -- Test     labels
-    Keyword Arguments:
-        abn_cls_idx {int} -- Anomalous class index (default: {0})
-    Returns:
-        [np.array] -- New training-test images and labels.
-    """
-    # Convert train-test labels into numpy array.
-    trn_lbl = np.array(trn_lbl)
-    tst_lbl = np.array(tst_lbl)
+# def get_cifar_anomaly_datasetop(trn_img, trn_lbl, tst_img, tst_lbl, abn_cls_idx=0, manualseed=-1):
+#     """[summary]
+#     Arguments:
+#         trn_img {np.array} -- Training images
+#         trn_lbl {np.array} -- Training labels
+#         tst_img {np.array} -- Test     images
+#         tst_lbl {np.array} -- Test     labels
+#     Keyword Arguments:
+#         abn_cls_idx {int} -- Anomalous class index (default: {0})
+#     Returns:
+#         [np.array] -- New training-test images and labels.
+#     """
+#     # Convert train-test labels into numpy array.
+#     trn_lbl = np.array(trn_lbl)
+#     tst_lbl = np.array(tst_lbl)
 
-    # --
-    # Find idx, img, lbl for abnormal and normal on org dataset.
-    nrm_trn_idx = np.where(trn_lbl == abn_cls_idx)[0]
-    abn_trn_idx = np.where(trn_lbl != abn_cls_idx)[0]
+#     # --
+#     # Find idx, img, lbl for abnormal and normal on org dataset.
+#     nrm_trn_idx = np.where(trn_lbl == abn_cls_idx)[0]
+#     abn_trn_idx = np.where(trn_lbl != abn_cls_idx)[0]
     
 
-    nrm_trn_img = trn_img[nrm_trn_idx]    # Normal training images
-    abn_trn_img = trn_img[abn_trn_idx]    # Abnormal training images
-    nrm_trn_lbl = trn_lbl[nrm_trn_idx]    # Normal training labels
-    abn_trn_lbl = trn_lbl[abn_trn_idx]    # Abnormal training labels.
+#     nrm_trn_img = trn_img[nrm_trn_idx]    # Normal training images
+#     abn_trn_img = trn_img[abn_trn_idx]    # Abnormal training images
+#     nrm_trn_lbl = trn_lbl[nrm_trn_idx]    # Normal training labels
+#     abn_trn_lbl = trn_lbl[abn_trn_idx]    # Abnormal training labels.
 
     
-    nrm_tst_idx = np.where(tst_lbl == abn_cls_idx)[0]
-    abn_tst_idx = np.where(tst_lbl != abn_cls_idx)[0]
+#     nrm_tst_idx = np.where(tst_lbl == abn_cls_idx)[0]
+#     abn_tst_idx = np.where(tst_lbl != abn_cls_idx)[0]
     
-    nrm_tst_img = tst_img[nrm_tst_idx]    # Normal training images
-    abn_tst_img = tst_img[abn_tst_idx]    # Abnormal training images.
-    nrm_tst_lbl = tst_lbl[nrm_tst_idx]    # Normal training labels
-    abn_tst_lbl = tst_lbl[abn_tst_idx]    # Abnormal training labels.
+#     nrm_tst_img = tst_img[nrm_tst_idx]    # Normal training images
+#     abn_tst_img = tst_img[abn_tst_idx]    # Abnormal training images.
+#     nrm_tst_lbl = tst_lbl[nrm_tst_idx]    # Normal training labels
+#     abn_tst_lbl = tst_lbl[abn_tst_idx]    # Abnormal training labels.
 
-    # --
-    # Assign labels to normal (0) and abnormals (1)
-    nrm_trn_lbl[:] = 0
-    nrm_tst_lbl[:] = 0
-    abn_trn_lbl[:] = 1
-    abn_tst_lbl[:] = 1
+#     # --
+#     # Assign labels to normal (0) and abnormals (1)
+#     nrm_trn_lbl[:] = 0
+#     nrm_tst_lbl[:] = 0
+#     abn_trn_lbl[:] = 1
+#     abn_tst_lbl[:] = 1
 
-    # --
-    if manualseed != -1:
-        # Random seed.
-        # Concatenate the original train and test sets.
-        nrm_img = np.concatenate((nrm_trn_img, nrm_tst_img), axis=0)
-        nrm_lbl = np.concatenate((nrm_trn_lbl, nrm_tst_lbl), axis=0)
-        abn_img = np.concatenate((abn_trn_img, abn_tst_img), axis=0)
-        abn_lbl = np.concatenate((abn_trn_lbl, abn_tst_lbl), axis=0)
-
-
-        # Split the normal data into the new train and tests.
-        idx = np.arange(len(nrm_lbl))
-        np.random.seed(manualseed)
-        np.random.shuffle(idx)
-
-        nrm_trn_len = int(len(idx) * 0.80)
-
-        nrm_trn_idx = idx[:3600]
-        nrm_tst_idx = idx[nrm_trn_len:]
-        nrm_val_idx = idx[3600:nrm_trn_len]
+#     # --
+#     if manualseed != -1:
+#         # Random seed.
+#         # Concatenate the original train and test sets.
+#         nrm_img = np.concatenate((nrm_trn_img, nrm_tst_img), axis=0)
+#         nrm_lbl = np.concatenate((nrm_trn_lbl, nrm_tst_lbl), axis=0)
+#         abn_img = np.concatenate((abn_trn_img, abn_tst_img), axis=0)
+#         abn_lbl = np.concatenate((abn_trn_lbl, abn_tst_lbl), axis=0)
 
 
+#         # Split the normal data into the new train and tests.
+#         idx = np.arange(len(nrm_lbl))
+#         np.random.seed(manualseed)
+#         np.random.shuffle(idx)
 
-        nrm_trn_img = nrm_img[nrm_trn_idx]
-        nrm_trn_lbl = nrm_lbl[nrm_trn_idx]
+#         nrm_trn_len = int(len(idx) * 0.80)
 
-        nrm_tst_img = nrm_img[nrm_tst_idx]
-        nrm_tst_lbl = nrm_lbl[nrm_tst_idx]
-
-        nrm_val_img = nrm_img[nrm_val_idx]
-        nrm_val_lbl = nrm_lbl[nrm_val_idx]
+#         nrm_trn_idx = idx[:3600]
+#         nrm_tst_idx = idx[nrm_trn_len:]
+#         nrm_val_idx = idx[3600:nrm_trn_len]
 
 
 
-        abn_img = np.concatenate((abn_trn_img, abn_tst_img), axis=0)
-        abn_lbl = np.concatenate((abn_trn_lbl, abn_tst_lbl), axis=0)
+#         nrm_trn_img = nrm_img[nrm_trn_idx]
+#         nrm_trn_lbl = nrm_lbl[nrm_trn_idx]
 
-        idx = np.arange(len(abn_lbl))
+#         nrm_tst_img = nrm_img[nrm_tst_idx]
+#         nrm_tst_lbl = nrm_lbl[nrm_tst_idx]
 
-        np.random.seed(manualseed)
-        np.random.shuffle(idx)
+#         nrm_val_img = nrm_img[nrm_val_idx]
+#         nrm_val_lbl = nrm_lbl[nrm_val_idx]
 
-        abn_trn_len = int(len(idx) * 0.80)
 
-        abn_trn_idx = idx[:abn_trn_len]
+
+#         abn_img = np.concatenate((abn_trn_img, abn_tst_img), axis=0)
+#         abn_lbl = np.concatenate((abn_trn_lbl, abn_tst_lbl), axis=0)
+
+#         idx = np.arange(len(abn_lbl))
+
+#         np.random.seed(manualseed)
+#         np.random.shuffle(idx)
+
+#         abn_trn_len = int(len(idx) * 0.80)
+
+#         abn_trn_idx = idx[:abn_trn_len]
         
-        abn_tst_idx = idx[abn_trn_len:]
+#         abn_tst_idx = idx[abn_trn_len:]
 
-        abn_tst_img = abn_img[abn_tst_idx]
-        abn_tst_lbl = abn_lbl[abn_tst_idx]
+#         abn_tst_img = abn_img[abn_tst_idx]
+#         abn_tst_lbl = abn_lbl[abn_tst_idx]
 
-    # Create new anomaly dataset based on the following data structure:
-    # - anomaly dataset
-    #   . -> train
-    #        . -> normal
-    #   . -> test
-    #        . -> normal
-    #        . -> abnormal
-    new_trn_img = np.copy(nrm_trn_img)
-    new_trn_lbl = np.copy(nrm_trn_lbl)
+#     # Create new anomaly dataset based on the following data structure:
+#     # - anomaly dataset
+#     #   . -> train
+#     #        . -> normal
+#     #   . -> test
+#     #        . -> normal
+#     #        . -> abnormal
+#     new_trn_img = np.copy(nrm_trn_img)
+#     new_trn_lbl = np.copy(nrm_trn_lbl)
 
-    new_val_img = np.copy(nrm_val_img)
-    new_val_lbl = np.copy(nrm_val_lbl)
+#     new_val_img = np.copy(nrm_val_img)
+#     new_val_lbl = np.copy(nrm_val_lbl)
 
 
 
-    new_tst_img = np.concatenate((nrm_tst_img,abn_tst_img), axis=0)
-    new_tst_lbl = np.concatenate((nrm_tst_lbl,abn_tst_lbl), axis=0)
+#     new_tst_img = np.concatenate((nrm_tst_img,abn_tst_img), axis=0)
+#     new_tst_lbl = np.concatenate((nrm_tst_lbl,abn_tst_lbl), axis=0)
 
-    return new_trn_img, new_trn_lbl, new_tst_img, new_tst_lbl,new_val_img,new_val_lbl
+#     return new_trn_img, new_trn_lbl, new_tst_img, new_tst_lbl,new_val_img,new_val_lbl
 
 
     
